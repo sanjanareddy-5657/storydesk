@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StoryDesk: explainable match intelligence</title>
+<style>
+  :root { --bg:#0e1420; --panel:#161e2e; --line:#26324a; --text:#e8edf6; --muted:#8fa0bd;
+          --nor:#4aa3ff; --eas:#ff9a3c; --ok:#2fd18b; --bad:#ff5d6c; --accent:#7c8cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family: system-ui, "Segoe UI", "Nirmala UI", "Noto Sans Telugu", "Noto Sans Devanagari", sans-serif; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+  h1 { font-size:18px; margin:0; letter-spacing:.3px; }
+  h1 span { color:var(--accent); }
+  .controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-left:auto; }
+  select, button { background:var(--panel); color:var(--text); border:1px solid var(--line);
+                   border-radius:8px; padding:7px 11px; font-size:13px; cursor:pointer; }
+  button.on { background:var(--accent); border-color:var(--accent); color:#0b1020; font-weight:600; }
+  .seg { display:inline-flex; gap:0; }
+  .seg button { border-radius:0; }
+  .seg button:first-child { border-radius:8px 0 0 8px; } .seg button:last-child { border-radius:0 8px 8px 0; }
+  label { font-size:13px; color:var(--muted); display:flex; gap:6px; align-items:center; cursor:pointer; }
+  main { display:grid; grid-template-columns: 1.15fr 1fr; gap:16px; padding:16px 20px; max-width:1300px; margin:0 auto; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .score { display:flex; justify-content:center; align-items:center; gap:22px; font-size:30px; font-weight:700; }
+  .score small { display:block; font-size:12px; font-weight:400; color:var(--muted); text-align:center; }
+  .nor { color:var(--nor); } .eas { color:var(--eas); }
+  .statrow { display:flex; justify-content:center; gap:26px; color:var(--muted); font-size:13px; margin-top:8px; flex-wrap:wrap; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin:0 0 10px; }
+  .card { border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:10px; padding:11px 13px; margin-bottom:10px; background:#121a29; }
+  .card.high_press { border-left-color:#c77dff; } .card.momentum_swing { border-left-color:#2fd18b; } .card.big_chance { border-left-color:#ffd166; }
+  .card.active { outline:2px solid var(--accent); }
+  .card h3 { margin:0 0 4px; font-size:15px; }
+  .card .meta { font-size:11px; color:var(--muted); margin-bottom:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .badge { background:rgba(47,209,139,.15); color:var(--ok); border-radius:20px; padding:1px 8px; font-size:11px; }
+  .card p { margin:0 0 8px; font-size:14px; line-height:1.45; }
+  .claim { font-size:12px; color:var(--muted); padding:5px 0; border-top:1px dashed var(--line); display:flex; gap:8px; justify-content:space-between; align-items:flex-start; }
+  .claim.blocked { color:var(--bad); }
+  .why { white-space:nowrap; font-size:11px; padding:3px 8px; }
+  .tag-ok { color:var(--ok); } .tag-bad { color:var(--bad); font-weight:600; }
+  svg text { font-family: system-ui, sans-serif; }
+  pre { background:#0b111c; border:1px solid var(--line); border-radius:8px; padding:10px; font-size:11px; max-height:260px; overflow:auto; color:#b8c7e6; }
+  table { width:100%; border-collapse:collapse; font-size:11px; color:var(--muted); }
+  td, th { text-align:left; padding:3px 6px; border-bottom:1px solid var(--line); }
+  .empty { color:var(--muted); font-size:13px; padding:20px 0; text-align:center; }
+  .evalgrid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; font-size:13px; }
+  .evalgrid div { background:#121a29; border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  .evalgrid b { display:block; font-size:20px; color:var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Story<span>Desk</span> <small style="color:var(--muted);font-weight:400">explainable match intelligence (synthetic data)</small></h1>
+  <div class="controls">
+    <select id="match"></select>
+    <div class="seg" id="mode">
+      <button data-v="analyst" class="on">Analyst</button><button data-v="casual">Casual fan</button>
+    </div>
+    <div class="seg" id="lang">
+      <button data-v="en" class="on">English</button><button data-v="te">తెలుగు</button><button data-v="hi">हिन्दी</button>
+    </div>
+    <label><input type="checkbox" id="inject"> Simulate AI hallucination</label>
+    <button id="ovbtn">Overlay JSON</button>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="panel" style="margin-bottom:16px">
+      <div class="score" id="score"></div>
+      <div class="statrow" id="statrow"></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Momentum (Eastvale share of play) <span style="text-transform:none;letter-spacing:0">· click a marker</span></h2>
+      <svg id="timeline" viewBox="0 0 900 130" width="100%"></svg>
+    </div>
+    <div class="panel">
+      <h2>Story queue</h2>
+      <div id="cards"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Evidence <span id="evtitle" style="text-transform:none;letter-spacing:0"></span></h2>
+      <svg id="pitch" viewBox="0 0 105 68" width="100%" style="background:#12361f;border-radius:8px"></svg>
+      <div id="evtable" style="margin-top:8px"></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px" id="ovpanel" hidden>
+      <h2>Broadcast overlay JSON (timed, machine-readable)</h2>
+      <pre id="ovjson"></pre>
+    </div>
+    <div class="panel">
+      <h2>Evaluation (20 synthetic matches)</h2>
+      <div class="evalgrid" id="eval"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const S = { match: 1, mode: 'analyst', lang: 'en', inject: false, data: null };
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const COL = { high_press:'#c77dff', momentum_swing:'#2fd18b', big_chance:'#ffd166' };
+
+for (let i = 1; i <= 20; i++) { const o = document.createElement('option'); o.value = i; o.textContent = 'Match ' + i; $('match').appendChild(o); }
+$('match').onchange = e => { S.match = +e.target.value; load(); };
+$('inject').onchange = e => { S.inject = e.target.checked; load(); };
+for (const id of ['mode', 'lang']) {
+  $(id).querySelectorAll('button').forEach(b => b.onclick = () => {
+    $(id).querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); S[id] = b.dataset.v; load();
+  });
+}
+$('ovbtn').onclick = () => { $('ovpanel').hidden = !$('ovpanel').hidden; };
+
+async function load() {
+  const q = `n=${S.match}&mode=${S.mode}&lang=${S.lang}&inject=${S.inject ? 1 : 0}`;
+  try {
+    const r = await fetch('/api/match?' + q);
+    S.data = await r.json();
+    if (S.data.error) throw new Error(S.data.error);
+  } catch (e) { $('cards').innerHTML = '<div class="empty">Could not load: ' + esc(e.message) + '</div>'; return; }
+  drawScore(); drawTimeline(); drawCards();
+  $('ovjson').textContent = JSON.stringify(S.data.overlay, null, 2);
+  if (S.data.cards.length) showEvidence(0); else clearEvidence();
+}
+
+function drawScore() {
+  const d = S.data, s = d.stats;
+  $('score').innerHTML = `<div class="nor">${esc(d.teams.NOR)}<small>xG ${s.NOR.xg}</small></div>
+    <div>${s.NOR.goals} – ${s.EAS.goals}</div><div class="eas">${esc(d.teams.EAS)}<small>xG ${s.EAS.xg}</small></div>`;
+  $('statrow').innerHTML = `<span>Shots ${s.NOR.shots}–${s.EAS.shots}</span><span>Pass accuracy ${s.NOR.pass_acc}%–${s.EAS.pass_acc}%</span>`;
+}
+
+function drawTimeline() {
+  const d = S.data, W = 900, H = 130, L = 30, R = 10, T = 14, B = 22, pw = W - L - R, ph = H - T - B;
+  const x = m => L + (m / 89) * pw, y = v => T + (1 - (v - 0.3) / 0.5) * ph;
+  let g = '';
+  g += `<line x1="${L}" x2="${W - R}" y1="${y(0.5)}" y2="${y(0.5)}" stroke="#334" stroke-dasharray="4 4"/>`;
+  g += `<text x="2" y="${y(0.5) + 4}" fill="#8fa0bd" font-size="10">50%</text>`;
+  for (let m = 0; m <= 90; m += 15) g += `<text x="${x(Math.min(m, 89))}" y="${H - 6}" fill="#8fa0bd" font-size="10" text-anchor="middle">${m}'</text>`;
+  const pts = d.timeline.map((v, m) => `${x(m).toFixed(1)},${Math.max(T, Math.min(T + ph, y(v))).toFixed(1)}`).join(' ');
+  g += `<polyline points="${pts}" fill="none" stroke="#ff9a3c" stroke-width="2"/>`;
+  d.goals.forEach(go => { g += `<text x="${x(go.minute)}" y="${T + 2}" font-size="12" text-anchor="middle" fill="${go.team === 'EAS' ? '#ff9a3c' : '#4aa3ff'}">⚽</text>`; });
+  d.cards.forEach((c, i) => {
+    const mid = c.end_minute > c.minute + 1 ? (c.minute + c.end_minute) / 2 : c.minute;
+    g += `<circle data-i="${i}" cx="${x(mid)}" cy="${H - 20}" r="7" fill="${COL[c.type]}" stroke="#0e1420" stroke-width="2" style="cursor:pointer"/>`;
+  });
+  $('timeline').innerHTML = g;
+  $('timeline').querySelectorAll('circle').forEach(c => c.onclick = () => showEvidence(+c.dataset.i));
+}
+
+function drawCards() {
+  const d = S.data;
+  if (!d.cards.length) { $('cards').innerHTML = '<div class="empty">No key moments</div>'; return; }
+  $('cards').innerHTML = d.cards.map((c, i) => {
+    const when = c.end_minute > c.minute + 1 ? `${c.minute}'–${c.end_minute}'` : `${c.minute}'`;
+    const claims = c.claims.map(cl => `<div class="claim"><span><span class="tag-ok">✓ verified</span> ${esc(cl.text)}</span>
+      <button class="why" data-i="${i}" data-ids="${esc(cl.evidence_ids.join(','))}">Why?</button></div>`).join('');
+    const blocked = c.blocked.map(cl => `<div class="claim blocked"><span><span class="tag-bad">✕ BLOCKED</span> ${esc(cl.text)}
+      <br><i>${esc(cl.reason)}</i></span></div>`).join('');
+    return `<div class="card ${c.type}" id="card${i}">
+      <div class="meta"><span>${esc(c.type.replace('_', ' '))}</span><span>minute ${when}</span><span class="badge">verified · ${c.evidence_ids.length} events</span></div>
+      <h3>${esc(c.headline)}</h3><p>${esc(c.line)}</p>${claims}${blocked}</div>`;
+  }).join('');
+  $('cards').querySelectorAll('.why').forEach(b => b.onclick = () => showEvidence(+b.dataset.i, b.dataset.ids.split(',')));
+}
+
+function clearEvidence() { $('pitch').innerHTML = ''; $('evtable').innerHTML = ''; $('evtitle').textContent = ''; }
+
+async function showEvidence(i, ids) {
+  const c = S.data.cards[i];
+  document.querySelectorAll('.card').forEach(x => x.classList.remove('active'));
+  const el = $('card' + i); if (el) el.classList.add('active');
+  ids = ids || c.evidence_ids;
+  $('evtitle').textContent = '· ' + c.headline;
+  let evs = [];
+  try { evs = await (await fetch(`/api/events?n=${S.match}&ids=${ids.slice(0, 60).join(',')}`)).json(); } catch (e) {}
+  let g = `<rect x="0.5" y="0.5" width="104" height="67" fill="none" stroke="#ffffff55" stroke-width=".4"/>
+    <line x1="52.5" x2="52.5" y1="0.5" y2="67.5" stroke="#ffffff55" stroke-width=".4"/>
+    <circle cx="52.5" cy="34" r="8" fill="none" stroke="#ffffff55" stroke-width=".4"/>
+    <rect x="0.5" y="20" width="16" height="28" fill="none" stroke="#ffffff55" stroke-width=".4"/>
+    <rect x="88.5" y="20" width="16" height="28" fill="none" stroke="#ffffff55" stroke-width=".4"/>`;
+  evs.forEach(e => {
+    const col = e.team === 'EAS' ? '#ff9a3c' : '#4aa3ff', px = e.x * 1.05, py = e.y * 0.68;
+    g += e.type === 'shot'
+      ? `<circle cx="${px}" cy="${py}" r="2.2" fill="${col}" stroke="#fff" stroke-width=".5"/>`
+      : `<circle cx="${px}" cy="${py}" r="1.1" fill="${col}" opacity=".85"/>`;
+  });
+  $('pitch').innerHTML = g;
+  $('evtable').innerHTML = evs.length
+    ? `<table><tr><th>ID</th><th>min</th><th>type</th><th>player</th><th>x,y</th></tr>` +
+      evs.slice(0, 8).map(e => `<tr><td>${e.id}</td><td>${e.minute}'</td><td>${e.type}${e.xg ? ' (xG ' + e.xg + ')' : ''}</td><td>${e.player}</td><td>${e.x},${e.y}</td></tr>`).join('') +
+      `</table><div style="font-size:11px;color:var(--muted);margin-top:4px">${evs.length} evidence events (showing first ${Math.min(8, evs.length)})</div>`
+    : '<div class="empty">No events</div>';
+}
+
+async function loadEval() {
+  try {
+    const e = await (await fetch('/api/eval')).json();
+    if (!e.detection) { $('eval').innerHTML = '<div>Run eval\\run_eval.py first</div>'; return; }
+    const N = e.matches, pct = v => Math.round(100 * v / N) + '%';
+    $('eval').innerHTML = `
+      <div><b>${pct(e.detection.high_press)}</b>high press found</div>
+      <div><b>${pct(e.detection.momentum_swing)}</b>momentum swing found</div>
+      <div><b>${pct(e.detection.big_chance)}</b>big chance found</div>
+      <div><b>${e.false_positives}</b>false positives</div>
+      <div><b>${e.claims.fake_caught}/${e.claims.fake_claims}</b>fake claims blocked</div>
+      <div><b>${e.genuine_wrongly_rejected}</b>genuine claims wrongly rejected</div>`;
+  } catch (e) { $('eval').innerHTML = '<div>Eval not available</div>'; }
+}
+
+load(); loadEval();
+</script>
+</body>
+</html>
