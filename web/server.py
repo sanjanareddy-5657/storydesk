@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -20,7 +21,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def do_GET(self)
+    def do_GET(self):
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         try:
@@ -49,6 +50,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    port = 8000
+    port = int(os.environ.get("PORT", 8000))
     print(f"StoryDesk running: http://localhost:{port}   (Ctrl+C to stop)")
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
